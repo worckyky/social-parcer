@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: metaparser-backend
+    restart: unless-stopped
+    volumes:
+      - ./backend/media:/app/media
+    environment:
+      - PYTHONPATH=/app
+    expose:
+      - "8000"
+    networks:
+      - appnet
+
+  frontend:
+    build: ./frontend
+    container_name: metaparser-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "80"
+    networks:
+      - appnet
+
+  nginx:
+    image: nginx:alpine
+    container_name: metaparser-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge 
