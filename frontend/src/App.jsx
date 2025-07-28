@@ -115,7 +115,7 @@ export default function App() {
         formData.append('csrftoken', csrfToken);
         formData.append('ds_user_id', dsUserId);
       }
-      const res = await axios.post('http://localhost:8000/parse', formData);
+      const res = await axios.post('/parse', formData);
       setProgress(60);
       setData(res.data);
       setProgress(100);
@@ -139,10 +139,10 @@ export default function App() {
         formData.append('csrftoken', csrfToken);
         formData.append('ds_user_id', dsUserId);
       }
-      const res = await axios.post('http://localhost:8000/download', formData);
+      const res = await axios.post('/download', formData);
       setProgress(60);
       const link = document.createElement('a');
-      link.href = `http://localhost:8000/media/${res.data.filename}`;
+      link.href = `/media/${res.data.filename}`;
       link.download = res.data.filename;
       link.click();
       setProgress(100);
