@@ -9,8 +9,6 @@ import { Separator } from './components/ui/separator';
 import { Alert, AlertDescription } from './components/ui/alert';
 import { Skeleton } from './components/ui/skeleton';
 import { 
-  Download, 
-  Link2, 
   Play, 
   Eye, 
   Heart, 
@@ -18,13 +16,17 @@ import {
   Clock,
   Share2,
   ExternalLink,
+  MessageCircle,
+  Instagram,
+  Sparkles,
   CheckCircle,
   AlertCircle,
-  Sparkles,
-  MessageCircle,
   Zap,
   Key
 } from 'lucide-react';
+
+// API URL из переменной окружения или fallback на localhost:8000
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function App() {
   const [url, setUrl] = useState('');
@@ -90,6 +92,25 @@ export default function App() {
     return url.toLowerCase().includes('instagram.com');
   };
 
+  // Функция для детекции VK Video URL
+  const isVkUrl = (url) => {
+    const urlLower = url.toLowerCase();
+    return urlLower.includes('vk.com/video') || 
+           urlLower.includes('vk.com/clip') || 
+           urlLower.includes('vk.ru/video') || 
+           urlLower.includes('vk.ru/clip') ||
+           urlLower.includes('m.vk.com/video') ||
+           urlLower.includes('m.vk.ru/video');
+  };
+
+  // Функция для детекции Likee URL
+  const isLikeeUrl = (url) => {
+    const urlLower = url.toLowerCase();
+    return urlLower.includes('likee.video') || 
+           urlLower.includes('likee.com') || 
+           urlLower.includes('l.likee.video');
+  };
+
   // Функция для проверки валидности Instagram cookies
   const hasValidInstagramCookies = () => {
     return sessionId.trim() && csrfToken.trim() && dsUserId.trim();
@@ -115,7 +136,7 @@ export default function App() {
         formData.append('csrftoken', csrfToken);
         formData.append('ds_user_id', dsUserId);
       }
-      const res = await axios.post('/parse', formData);
+      const res = await axios.post(`${API_URL}/parse`, formData);
       setProgress(60);
       setData(res.data);
       setProgress(100);
@@ -127,32 +148,7 @@ export default function App() {
     }
   };
 
-  const handleDownload = async () => {
-    if (!data?.url) return;
-    setLoading(true);
-    setError('');
-    setProgress(10);
-    try {
-      const formData = new URLSearchParams({ url: data.url });
-      if (isInstagramUrl(data.url) && hasValidInstagramCookies()) {
-        formData.append('sessionid', sessionId);
-        formData.append('csrftoken', csrfToken);
-        formData.append('ds_user_id', dsUserId);
-      }
-      const res = await axios.post('/download', formData);
-      setProgress(60);
-      const link = document.createElement('a');
-      link.href = `/media/${res.data.filename}`;
-      link.download = res.data.filename;
-      link.click();
-      setProgress(100);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Ошибка скачивания');
-      setProgress(0);
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const getPlatformBadge = (url) => {
     if (url?.includes('tiktok')) return { name: 'TikTok', variant: 'default' };
@@ -210,11 +206,11 @@ export default function App() {
         <Card className="border-2 border-dashed border-muted hover:border-primary/50 transition-all duration-300">
           <CardHeader className="text-center">
             <CardTitle className="flex items-center justify-center gap-2 text-2xl">
-              <Link2 className="w-6 h-6 text-primary" />
+              <ExternalLink className="w-6 h-6 text-primary" />
               Вставьте ссылку
             </CardTitle>
             <CardDescription className="text-base">
-              Введите URL видео или поста для получения детальной информации
+              Введите URL видео или поста для получения детальной информации. Поддерживаются TikTok, Instagram, YouTube, VK Video и Likee
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -223,7 +219,7 @@ export default function App() {
                 <div className="flex-1 relative">
                   <Input
                     type="url"
-                    placeholder="https://www.tiktok.com/@user/video/..."
+                    placeholder="https://vk.com/video..., https://likee.video/@username..., https://tiktok.com/..."
                     value={url}
                     onChange={e => setUrl(e.target.value)}
                     required
@@ -343,6 +339,8 @@ export default function App() {
               <Badge variant="outline">TikTok</Badge>
               <Badge variant="outline">Instagram</Badge>
               <Badge variant="outline">YouTube</Badge>
+              <Badge variant="outline">VK Video</Badge>
+              <Badge variant="outline">Likee</Badge>
             </div>
           </CardContent>
         </Card>
@@ -497,29 +495,7 @@ export default function App() {
                   </div>
                 )}
 
-                <Separator />
 
-                {/* Download Button */}
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <Button 
-                    onClick={handleDownload} 
-                    disabled={loading}
-                    size="lg"
-                    className="flex-1 h-12 text-base"
-                  >
-                    <Download className="w-5 h-5 mr-2" />
-                    {loading ? 'Скачивание...' : 'Скачать видео'}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="lg"
-                    className="h-12 px-8"
-                    onClick={() => navigator.clipboard.writeText(data.url)}
-                  >
-                    <Link2 className="w-5 h-5 mr-2" />
-                    Копировать ссылку
-                  </Button>
-                </div>
               </div>
             </CardContent>
           </Card>
