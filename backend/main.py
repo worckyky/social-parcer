@@ -14,6 +14,10 @@ import time
 import random
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
 
 app = FastAPI()
 
@@ -27,6 +31,170 @@ app.add_middleware(
 
 MEDIA_DIR = "media"
 os.makedirs(MEDIA_DIR, exist_ok=True)
+
+# Получаем API ключ YouTube из переменных окружения
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_KEY")
+
+def extract_video_id_from_url(url: str) -> str:
+    """
+    Извлекает video_id из различных форматов YouTube URL
+    Поддерживает:
+    - https://youtube.com/watch?v=VIDEO_ID
+    - https://youtu.be/VIDEO_ID
+    - https://youtube.com/embed/VIDEO_ID
+    - https://m.youtube.com/watch?v=VIDEO_ID
+    - VIDEO_ID (если передан только ID)
+    """
+    if not url:
+        raise ValueError("URL не предоставлен")
+
+    # Паттерны для извлечения video_id
+    patterns = [
+        r'(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})',
+        r'(?:youtu\.be\/)([a-zA-Z0-9_-]{11})',
+        r'(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
+        r'(?:m\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})',
+        r'(?:youtube\.com\/v\/)([a-zA-Z0-9_-]{11})',
+        r'^([a-zA-Z0-9_-]{11})$'  # Если передан только ID
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+
+    raise ValueError(f"Неверный формат YouTube URL: {url}")
+
+def is_youtube_url(url: str) -> bool:
+    """Проверяет, является ли URL ссылкой на YouTube"""
+    if not url:
+        return False
+
+    url_lower = url.lower()
+    youtube_domains = [
+        'youtube.com',
+        'youtu.be',
+        'm.youtube.com',
+        'www.youtube.com'
+    ]
+
+    return any(domain in url_lower for domain in youtube_domains)
+
+def clean_thumbnail_url(thumbnail_url: str) -> str:
+    """Очищает thumbnail URL от некорректных символов"""
+    if not thumbnail_url:
+        return thumbnail_url
+    
+    # Убираем символ @ в начале URL
+    cleaned_url = thumbnail_url.lstrip('@')
+    
+    # Убираем другие некорректные символы в начале
+    while cleaned_url and not cleaned_url.startswith('http'):
+        cleaned_url = cleaned_url[1:]
+    
+    print(f"Очистка thumbnail URL: {thumbnail_url} -> {cleaned_url}")
+    return cleaned_url
+
+def get_youtube_video_info_via_api(video_id: str) -> dict:
+    """
+    Получает информацию о YouTube видео через YouTube Data API v3
+    """
+    if not YOUTUBE_API_KEY:
+        raise ValueError("YouTube API ключ не найден в переменных окружения")
+
+    api_url = "https://www.googleapis.com/youtube/v3/videos"
+    params = {
+        'part': 'snippet,statistics,contentDetails',
+        'id': video_id,
+        'key': YOUTUBE_API_KEY
+    }
+
+    try:
+        response = requests.get(api_url, params=params, timeout=30)
+        response.raise_for_status()
+
+        data = response.json()
+
+        if not data.get('items'):
+            raise HTTPException(
+                status_code=404,
+                detail=f"YouTube видео с ID {video_id} не найдено или недоступно"
+            )
+
+        video_data = data['items'][0]
+        snippet = video_data.get('snippet', {})
+        statistics = video_data.get('statistics', {})
+
+        # Преобразуем строковые числа в int
+        view_count = int(statistics.get('viewCount', 0))
+        like_count = int(statistics.get('likeCount', 0))
+        comment_count = int(statistics.get('commentCount', 0))
+
+        # Получаем и очищаем thumbnail URL
+        thumbnail_url = snippet.get('thumbnails', {}).get('maxres', {}).get('url') or \
+                       snippet.get('thumbnails', {}).get('high', {}).get('url')
+        thumbnail_url = clean_thumbnail_url(thumbnail_url) if thumbnail_url else None
+
+        return {
+            'title': snippet.get('title', 'YouTube Video'),
+            'uploader': snippet.get('channelTitle', 'Unknown Channel'),
+            'channel': snippet.get('channelTitle', 'Unknown Channel'),
+            'view_count': view_count,
+            'like_count': like_count,
+            'comment_count': comment_count,
+            'thumbnail': thumbnail_url,
+            'description': snippet.get('description', ''),
+            'upload_date': snippet.get('publishedAt'),
+            'duration': video_data.get('contentDetails', {}).get('duration'),
+            'tags': snippet.get('tags', []),
+            'category_id': snippet.get('categoryId'),
+            'url': f"https://youtube.com/watch?v={video_id}",
+            'webpage_url': f"https://youtube.com/watch?v={video_id}",
+            '_youtube_video_id': video_id,
+            '_youtube_channel_id': snippet.get('channelId'),
+            'comments': []  # API v3 требует отдельный запрос для комментариев
+        }
+
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при обращении к YouTube API: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка обработки YouTube данных: {str(e)}"
+        )
+
+def extract_video_id_from_url(url: str) -> str:
+    """
+    Извлекает video_id из различных форматов YouTube URL
+    Поддерживает:
+    - https://youtube.com/watch?v=VIDEO_ID
+    - https://youtu.be/VIDEO_ID
+    - https://youtube.com/embed/VIDEO_ID
+    - https://m.youtube.com/watch?v=VIDEO_ID
+    - VIDEO_ID (если передан только ID)
+    """
+    if not url:
+        raise ValueError("URL не предоставлен")
+
+    # Паттерны для извлечения video_id
+    patterns = [
+        r'(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})',
+        r'(?:youtu\.be\/)([a-zA-Z0-9_-]{11})',
+        r'(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
+        r'(?:m\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})',
+        r'(?:youtube\.com\/v\/)([a-zA-Z0-9_-]{11})',
+        r'^([a-zA-Z0-9_-]{11})$'  # Если передан только ID
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+
+    raise ValueError(f"Неверный формат YouTube URL: {url}")
 
 def create_cookies_file(sessionid: str, csrftoken: str, ds_user_id: str) -> str:
     """Создает временный файл с cookies для yt-dlp в формате Netscape"""
@@ -603,6 +771,8 @@ def is_vk_url(url: str) -> bool:
         "vk.com/clip",
         "vk.ru/video",
         "vk.ru/clip",
+        "vkvideo.ru/clip",
+        "vkvideo.ru/video",
         "m.vk.com/video",
         "m.vk.ru/video"
     ])
@@ -614,6 +784,29 @@ def is_instagram_url(url: str) -> bool:
 def get_video_info(url: str, sessionid: str = "", csrftoken: str = "", ds_user_id: str = ""):
     """Улучшенная функция получения информации о видео"""
     try:
+        # Специальная обработка для YouTube
+        if is_youtube_url(url):
+            print(f"Обрабатываем YouTube URL: {url}")
+
+            try:
+                video_id = extract_video_id_from_url(url)
+                print(f"Извлечен YouTube video_id: {video_id}")
+
+                # Пытаемся получить данные через YouTube API
+                if YOUTUBE_API_KEY:
+                    try:
+                        youtube_info = get_youtube_video_info_via_api(video_id)
+                        print("Успешно получили данные через YouTube API")
+                        return youtube_info
+                    except Exception as api_error:
+                        print(f"Ошибка YouTube API: {api_error}")
+                        # Fallback на yt-dlp если API не работает
+                        pass
+
+            except ValueError as e:
+                print(f"Ошибка извлечения video_id: {e}")
+                # Продолжаем с yt-dlp для обработки URL
+
         # Специальная обработка для Likee
         if is_likee_url(url):
             print(f"Обрабатываем Likee URL: {url}")
@@ -633,6 +826,11 @@ def get_video_info(url: str, sessionid: str = "", csrftoken: str = "", ds_user_i
                 likes = parse_short_number(likee_info.get('likes', 0))
                 comments = parse_short_number(likee_info.get('comments', 0))
 
+                # Очищаем thumbnail URL
+                thumbnail_url = likee_info.get('thumbnail')
+                if thumbnail_url:
+                    thumbnail_url = clean_thumbnail_url(thumbnail_url)
+
                 return {
                     "title": likee_info.get('title', 'Likee Video'),
                     "uploader": likee_info.get('author', 'Unknown'),
@@ -640,7 +838,7 @@ def get_video_info(url: str, sessionid: str = "", csrftoken: str = "", ds_user_i
                     "view_count": views,
                     "like_count": likes,
                     "comment_count": comments,
-                    "thumbnail": likee_info.get('thumbnail'),
+                    "thumbnail": thumbnail_url,
                     "description": likee_info.get('title', ''),  # Используем title как description
                     "comments": [],
                     "url": url,
@@ -690,6 +888,20 @@ def get_video_info(url: str, sessionid: str = "", csrftoken: str = "", ds_user_i
     except Exception as e:
         error_msg = str(e).lower()
 
+        # YouTube специфичные ошибки
+        if is_youtube_url(url):
+            if any(keyword in error_msg for keyword in ["private", "deleted", "unavailable"]):
+                raise HTTPException(status_code=404, detail="YouTube видео не найдено, удалено или недоступно.")
+            elif any(keyword in error_msg for keyword in ["quota", "api key", "forbidden"]):
+                raise HTTPException(status_code=403, detail="Ошибка доступа к YouTube API. Проверьте квоту и ключ API.")
+
+        # YouTube специфичные ошибки
+        if is_youtube_url(url):
+            if any(keyword in error_msg for keyword in ["private", "deleted", "unavailable"]):
+                raise HTTPException(status_code=404, detail="YouTube видео не найдено, удалено или недоступно.")
+            elif any(keyword in error_msg for keyword in ["quota", "api key", "forbidden"]):
+                raise HTTPException(status_code=403, detail="Ошибка доступа к YouTube API. Проверьте квоту и ключ API.")
+
         # Instagram авторизация
         if is_instagram_url(url) and any(keyword in error_msg for keyword in ["login", "sign in", "bot", "confirm", "cookies"]):
             raise HTTPException(status_code=401, detail="Ошибка авторизации Instagram. Проверьте корректность cookies или обновите их в браузере.")
@@ -730,20 +942,37 @@ async def parse_url(url: str = Form(...), sessionid: str = Form(""), csrftoken: 
         comment_count_from_field = info.get("comment_count")
         comment_count = comment_count_from_field if comment_count_from_field is not None else comment_count_from_array
 
+        # Очищаем thumbnail URL от некорректных символов
+        thumbnail_url = info.get("thumbnail")
+        if thumbnail_url:
+            thumbnail_url = clean_thumbnail_url(thumbnail_url)
+
         result = {
             "title": title,
             "author": author,
             "views": views,
             "likes": likes,
             "comment_count": comment_count,
-            "thumbnail": info.get("thumbnail"),
+            "thumbnail": thumbnail_url,
             "description": info.get("description"),
             "comments": comments,
             "url": url
         }
 
+        # Добавляем дополнительную информацию для YouTube
+        if is_youtube_url(url):
+            result.update({
+                "video_id": info.get("_youtube_video_id"),
+                "channel_id": info.get("_youtube_channel_id"),
+                "upload_date": info.get("upload_date"),
+                "duration": info.get("duration"),
+                "tags": info.get("tags", []),
+                "category_id": info.get("category_id"),
+                "platform": "youtube"
+            })
+
         # Добавляем дополнительную информацию для Likee
-        if is_likee_url(url):
+        elif is_likee_url(url):
             result.update({
                 "post_id": info.get("_likee_post_id"),
                 "author_id": info.get("_likee_author_id"),
@@ -759,6 +988,118 @@ async def parse_url(url: str = Form(...), sessionid: str = Form(""), csrftoken: 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
+
+@app.post("/extract-video-id")
+async def extract_video_id_endpoint(url: str = Form(...)):
+    """
+    Endpoint для извлечения video_id из URL (аналог логики n8n)
+    Поддерживает YouTube, возвращает структуру как в n8n
+    """
+    try:
+        # Извлекаем video_id из разных возможных источников
+        video_url = url.strip()
+
+        if not video_url:
+            raise HTTPException(
+                status_code=400,
+                detail='URL not provided. Send POST request with {"url": "https://youtube.com/watch?v=VIDEO_ID"}'
+            )
+
+        print(f'Found URL: {video_url}')
+
+        # Проверяем, является ли это YouTube URL
+        if is_youtube_url(video_url):
+            try:
+                video_id = extract_video_id_from_url(video_url)
+                print(f'Extracted video ID: {video_id}')
+
+                return {
+                    "video_id": video_id,
+                    "original_url": video_url,
+                    "api_key": YOUTUBE_API_KEY if YOUTUBE_API_KEY else None,
+                    "platform": "youtube"
+                }
+
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        # Для других платформ
+        elif is_likee_url(video_url):
+            likee_id = extract_video_id_from_likee_url(video_url)
+            return {
+                "video_id": likee_id,
+                "original_url": video_url,
+                "platform": "likee"
+            }
+
+        else:
+            # Для других платформ возвращаем исходный URL
+            return {
+                "video_id": None,
+                "original_url": video_url,
+                "platform": "other"
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка извлечения video_id: {str(e)}")
+
+@app.post("/extract-video-id")
+async def extract_video_id_endpoint(url: str = Form(...)):
+    """
+    Endpoint для извлечения video_id из URL (аналог логики n8n)
+    Поддерживает YouTube, возвращает структуру как в n8n
+    """
+    try:
+        # Извлекаем video_id из разных возможных источников
+        video_url = url.strip()
+
+        if not video_url:
+            raise HTTPException(
+                status_code=400,
+                detail='URL not provided. Send POST request with {"url": "https://youtube.com/watch?v=VIDEO_ID"}'
+            )
+
+        print(f'Found URL: {video_url}')
+
+        # Проверяем, является ли это YouTube URL
+        if is_youtube_url(video_url):
+            try:
+                video_id = extract_video_id_from_url(video_url)
+                print(f'Extracted video ID: {video_id}')
+
+                return {
+                    "video_id": video_id,
+                    "original_url": video_url,
+                    "api_key": YOUTUBE_API_KEY if YOUTUBE_API_KEY else None,
+                    "platform": "youtube"
+                }
+
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        # Для других платформ
+        elif is_likee_url(video_url):
+            likee_id = extract_video_id_from_likee_url(video_url)
+            return {
+                "video_id": likee_id,
+                "original_url": video_url,
+                "platform": "likee"
+            }
+
+        else:
+            # Для других платформ возвращаем исходный URL
+            return {
+                "video_id": None,
+                "original_url": video_url,
+                "platform": "other"
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка извлечения video_id: {str(e)}")
 
 @app.post("/download")
 async def download_url(
@@ -893,13 +1234,69 @@ async def get_likee_info(url: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка получения информации: {str(e)}")
 
+# Дополнительный endpoint для получения информации о YouTube видео через API
+@app.post("/youtube/info")
+async def get_youtube_info_api(video_id: str = Form(...)):
+    """Специальный endpoint для получения информации о YouTube видео через API"""
+    try:
+        if not YOUTUBE_API_KEY:
+            raise HTTPException(status_code=500, detail="YouTube API ключ не настроен")
+
+        info = get_youtube_video_info_via_api(video_id)
+        return {
+            "success": True,
+            "data": info,
+            "source": "youtube_api"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения YouTube информации: {str(e)}")
+
+# Дополнительный endpoint для получения информации о YouTube видео через API
+@app.post("/youtube/info")
+async def get_youtube_info_api(video_id: str = Form(...)):
+    """Специальный endpoint для получения информации о YouTube видео через API"""
+    try:
+        if not YOUTUBE_API_KEY:
+            raise HTTPException(status_code=500, detail="YouTube API ключ не настроен")
+
+        info = get_youtube_video_info_via_api(video_id)
+        return {
+            "success": True,
+            "data": info,
+            "source": "youtube_api"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения YouTube информации: {str(e)}")
+
 # Endpoint для проверки здоровья сервиса
 @app.get("/health")
 def health_check():
     return {
         "status": "healthy",
         "supported_platforms": ["Instagram", "VK", "Likee", "YouTube", "TikTok"],
+        "youtube_api_available": bool(YOUTUBE_API_KEY),
         "likee_extractors": ["mobile_request", "api_request", "meta_tags"]
+    }
+
+# Endpoint для проверки конфигурации
+@app.get("/config")
+def get_config():
+    return {
+        "youtube_api_configured": bool(YOUTUBE_API_KEY),
+        "media_directory": MEDIA_DIR,
+        "supported_platforms": {
+            "youtube": True,
+            "instagram": True,
+            "likee": True,
+            "vk": True,
+            "tiktok": True
+        }
     }
 
 if __name__ == "__main__":

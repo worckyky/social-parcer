@@ -159,9 +159,29 @@ export default function App() {
 
   const formatNumber = (num) => {
     if (!num) return 'N/A';
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
     return num.toLocaleString();
+  };
+
+  // Функция для очистки и валидации thumbnail URL
+  const cleanThumbnailUrl = (url) => {
+    if (!url) return null;
+    
+    // Убираем символ @ в начале URL
+    let cleanedUrl = url.trim().replace(/^@+/, '');
+    
+    // Убираем другие некорректные символы в начале
+    while (cleanedUrl && !cleanedUrl.startsWith('http')) {
+      cleanedUrl = cleanedUrl.substring(1);
+    }
+    
+    // Проверяем что URL валидный
+    try {
+      new URL(cleanedUrl);
+      return cleanedUrl;
+    } catch (e) {
+      console.warn('Невалидный thumbnail URL:', url, '-> очищенный:', cleanedUrl);
+      return null;
+    }
   };
 
   return (
@@ -397,12 +417,16 @@ export default function App() {
           <Card className="overflow-hidden shadow-xl border-0 bg-background/50 backdrop-blur-sm">
             <CardContent className="p-0">
               {/* Thumbnail */}
-              {data.thumbnail && (
+              {data.thumbnail && cleanThumbnailUrl(data.thumbnail) && (
                 <div className="relative overflow-hidden">
                   <img 
-                    src={data.thumbnail} 
+                    src={cleanThumbnailUrl(data.thumbnail)} 
                     alt="preview" 
                     className="w-full h-80 object-cover transition-transform duration-300 hover:scale-105"
+                    onError={(e) => {
+                      console.error('Ошибка загрузки изображения:', data.thumbnail);
+                      e.target.style.display = 'none';
+                    }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                   <div className="absolute top-4 left-4">

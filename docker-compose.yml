@@ -7,6 +7,16 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/media:/app/media
+    environment:
+      - YOUTUBE_KEY=${YOUTUBE_KEY:-}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MEDIA_DIR=media
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-30}
+      - DOWNLOAD_TIMEOUT=${DOWNLOAD_TIMEOUT:-60}
+      - RATE_LIMIT=${RATE_LIMIT:-100}
+    env_file:
+      - ./backend/.env
     networks:
       - appnet
   frontend:

@@ -9,6 +9,15 @@ services:
       - ./backend/media:/app/media
     environment:
       - PYTHONPATH=/app
+      - YOUTUBE_KEY=${YOUTUBE_KEY:-}
+      - DEBUG=${DEBUG:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - MEDIA_DIR=media
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-30}
+      - DOWNLOAD_TIMEOUT=${DOWNLOAD_TIMEOUT:-60}
+      - RATE_LIMIT=${RATE_LIMIT:-100}
+    env_file:
+      - ./backend/.env
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - appnet
