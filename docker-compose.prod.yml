@@ -9,6 +9,7 @@ services:
       - ./backend/media:/app/media
     environment:
       - PYTHONPATH=/app
+      - PROXY_URL=${PROXY_URL:-}
     expose:
       - "8000"
     networks:

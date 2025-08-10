@@ -9,6 +9,7 @@ services:
       - ./backend/media:/app/media
     environment:
       - YOUTUBE_KEY=${YOUTUBE_KEY:-}
+      - PROXY_URL=${PROXY_URL:-}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MEDIA_DIR=media
